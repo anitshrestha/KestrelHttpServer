@@ -29,7 +29,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https
 
         /// <summary>
         /// <para>
-        /// Specifies the server certificate used to authenticate HTTPS connections.
+        /// Specifies the server certificate used to authenticate HTTPS connections. This is ignored if ServerCertificateSelector is set.
         /// </para>
         /// <para>
         /// If the server certificate has an Extended Key Usage extension, the usages must include Server Authentication (OID 1.3.6.1.5.5.7.3.1).
@@ -37,6 +37,18 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https
         /// </summary>
         public X509Certificate2 ServerCertificate { get; set; }
 
+        /// <summary>
+        /// A callback that will be invoked to dynamically select a server certificate. This is higher priority than ServerCertificate.
+        /// </summary>
+        public Func<string, X509Certificate2> ServerCertificateSelector
+#if NETCOREAPP2_1
+        { get; set; }
+#else
+        {
+            get => null;
+            set => throw new PlatformNotSupportedException("This API requires targeting netcoreapp2.1");
+        }
+#endif
         /// <summary>
         /// Specifies the client certificate requirements for a HTTPS connection. Defaults to <see cref="ClientCertificateMode.NoCertificate"/>.
         /// </summary>

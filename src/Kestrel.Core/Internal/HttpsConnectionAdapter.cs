@@ -22,6 +22,8 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https.Internal
 
         private readonly HttpsConnectionAdapterOptions _options;
         private readonly X509Certificate2 _serverCertificate;
+        private readonly Func<object, string, X509Certificate2> _serverCertificateSelector;
+
         private readonly ILogger _logger;
 
         public HttpsConnectionAdapter(HttpsConnectionAdapterOptions options)
@@ -36,15 +38,34 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https.Internal
                 throw new ArgumentNullException(nameof(options));
             }
 
-            if (options.ServerCertificate == null)
+            // capture the certificate now so it can't be switched after validation
+            _serverCertificate = options.ServerCertificate;
+            var selector = options.ServerCertificateSelector;
+            if (_serverCertificate == null && selector == null)
             {
-                throw new ArgumentException(CoreStrings.ServiceCertificateRequired, nameof(options));
+                throw new ArgumentException(CoreStrings.ServerCertificateRequired, nameof(options));
             }
 
-            // capture the certificate now so it can be switched after validation
-            _serverCertificate = options.ServerCertificate;
-
-            EnsureCertificateIsAllowedForServerAuth(_serverCertificate);
+            // If a selector is provided then ignore the cert, it may be a default cert.
+            if (selector != null)
+            {
+                // SslStream doesn't allow both.
+                _serverCertificate = null;
+                // Adapt to the SslStream signature
+                _serverCertificateSelector = (sender, name) =>
+                {
+                    var cert = selector(name);
+                    if (cert != null)
+                    {
+                        EnsureCertificateIsAllowedForServerAuth(cert);
+                    }
+                    return cert;
+                };
+            }
+            else
+            {
+                EnsureCertificateIsAllowedForServerAuth(_serverCertificate);
+            }
 
             _options = options;
             _logger = loggerFactory?.CreateLogger(nameof(HttpsConnectionAdapter));
@@ -118,6 +139,7 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Https.Internal
                 var sslOptions = new SslServerAuthenticationOptions()
                 {
                     ServerCertificate = _serverCertificate,
+                    // TODO: ServerCertificateSelector = _serverCertificateSelector,
                     ClientCertificateRequired = certificateRequired,
                     EnabledSslProtocols = _options.SslProtocols,
                     CertificateRevocationCheckMode = _options.CheckCertificateRevocation ? X509RevocationMode.Online : X509RevocationMode.NoCheck,
